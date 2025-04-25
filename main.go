@@ -20,8 +20,16 @@ func cleanInput(text string) []string {
 }
 
 func main() {
-	//scanner := bufio.NewReader(os.Stdin)
+	commands := GetCommands()
+	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Pokedex > ")
+		scanner.Scan()
+		input := cleanInput(scanner.Text())
+		if _, ok := commands[input[0]]; ok {
+			commands[input[0]].callback()
+		} else {
+			fmt.Println("Uknown command")
+		}
 	}
 }
