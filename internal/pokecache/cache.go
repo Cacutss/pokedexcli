@@ -1,11 +1,6 @@
-package cache
+package pokecache
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -16,56 +11,50 @@ type cacheEntry struct {
 }
 
 type Cache struct {
-	Entries map[string]cacheEntry
-	mutex   sync.Mutex
+	cacheLock *sync.Mutex
+	Entries   map[string]cacheEntry
+	interval  time.Duration
 }
 
-func CreateHash(text string) string {
-	hash := sha256.New()
-	hash.Write([]byte(text))
-	realhash := hash.Sum(nil)
-	return hex.EncodeToString(realhash) + ".json"
-}
-
-func GetCacheDir() (string, error) {
-	path, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("can't find home path")
+func NewCache(Interval time.Duration) *Cache {
+	cache := Cache{
+		Entries:   make(map[string]cacheEntry),
+		interval:  Interval,
+		cacheLock: &sync.Mutex{},
 	}
-	fullPath := filepath.Join(path, ".cache/pokedexcli")
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		err = os.MkdirAll(fullPath, 0755)
-		if err != nil {
-			return "", err
+	go cache.reapLoop()
+	return &cache
+}
+
+func (c *Cache) Add(url string, body []byte) {
+	c.cacheLock.Lock()
+	defer c.cacheLock.Unlock()
+	c.Entries[url] = cacheEntry{
+		createdAt: time.Now(),
+		val:       body,
+	}
+}
+
+func (c *Cache) Get(url string) ([]byte, bool) {
+	c.cacheLock.Lock()
+	defer c.cacheLock.Unlock()
+	entry, ok := c.Entries[url]
+	if ok {
+		return entry.val, true
+	}
+	return nil, false
+}
+
+func (c *Cache) reapLoop() {
+	ticker := time.NewTicker(c.interval)
+	for range ticker.C {
+		Now := time.Now()
+		c.cacheLock.Lock()
+		for k, v := range c.Entries {
+			if Now.Sub(v.createdAt) > c.interval {
+				delete(c.Entries, k)
+			}
 		}
+		c.cacheLock.Unlock()
 	}
-	return fullPath, nil
-}
-
-func GetCache(path string) ([]byte, error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-func StoreCache(url string, body []byte) error {
-	filename := CreateHash(url)
-	dir, err := GetCacheDir()
-	if err != nil {
-		return fmt.Errorf("error no directory provided: %w", err)
-	}
-	fullPath := filepath.Join(dir, filename)
-	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
-		return nil
-	}
-	err = os.WriteFile(fullPath, body, 0755)
-	if err != nil {
-		return err
-	}
-	return err
 }

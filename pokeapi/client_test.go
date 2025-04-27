@@ -16,12 +16,8 @@ func TestGet(t *testing.T) {
 	if res == nil {
 		log.Fatal("response is nil")
 	}
-	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Fatal("error reading body:%w", err)
-	}
-	if err := StoreCache(url, body); err != nil {
-		log.Fatal(err)
 	}
 	res.Body.Close()
 }

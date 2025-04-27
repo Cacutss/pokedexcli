@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	pokecache "github.com/Cacutss/pokedexcli/internal/pokecache"
 	pokeapi "github.com/Cacutss/pokedexcli/pokeapi"
 	"io"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -17,6 +19,7 @@ type cliCommand struct {
 	description string
 	callback    func() error
 	config      *Config
+	cache       *pokecache.Cache
 }
 
 type MapStruct struct {
@@ -29,6 +32,7 @@ type MapStruct struct {
 	} `json:"results"`
 }
 
+var cache = pokecache.NewCache(time.Minute * 1)
 var Commands = make(map[string]cliCommand)
 
 func CliMap() error {
@@ -39,27 +43,20 @@ func CliMap() error {
 		url = *Commands["map"].config.Next
 	}
 	var body []byte
-	dir, err := pokeapi.GetCacheDir()
-	if err == nil {
-		cacheFile := dir + "/" + pokeapi.CreateHash(url)
-		body, err = os.ReadFile(cacheFile)
-	}
-	if err != nil {
+	body, ok := Commands["mapb"].cache.Get(url)
+	if !ok {
 		res, err := pokeapi.GetRes(url)
 		if err != nil {
 			return fmt.Errorf("error getting response:%w", err)
 		}
 		defer res.Body.Close()
-		if err := pokeapi.StoreCache(url, body); err != nil {
-			fmt.Println("error storing cache")
-		}
 		body, err = io.ReadAll(res.Body)
 		if err != nil {
-			return fmt.Errorf("error reading response: %w", err)
+			return fmt.Errorf("error reading body")
 		}
 	}
 	Map := MapStruct{}
-	if err = pokeapi.UnmarshalBody(body, &Map); err != nil {
+	if err := pokeapi.UnmarshalBody(body, &Map); err != nil {
 		return err
 	}
 	for _, v := range Map.Results {
@@ -89,27 +86,20 @@ func CliMapb() error {
 		url = *Commands["mapb"].config.Prev
 	}
 	var body []byte
-	dir, err := pokeapi.GetCacheDir()
-	if err == nil {
-		cacheFile := dir + "/" + pokeapi.CreateHash(url)
-		body, err = os.ReadFile(cacheFile)
-	}
-	if err != nil {
+	body, ok := Commands["mapb"].cache.Get(url)
+	if !ok {
 		res, err := pokeapi.GetRes(url)
 		if err != nil {
 			return fmt.Errorf("error getting response:%w", err)
 		}
 		defer res.Body.Close()
-		if err := pokeapi.StoreCache(url, body); err != nil {
-			fmt.Println("error storing cache")
-		}
 		body, err = io.ReadAll(res.Body)
 		if err != nil {
-			return fmt.Errorf("error reading response: %w", err)
+			return fmt.Errorf("error reading body")
 		}
 	}
 	Map := MapStruct{}
-	if err = pokeapi.UnmarshalBody(body, &Map); err != nil {
+	if err := pokeapi.UnmarshalBody(body, &Map); err != nil {
 		return err
 	}
 	for _, v := range Map.Results {
@@ -151,23 +141,27 @@ func init() {
 		description: "Displays a message",
 		callback:    CliHelp,
 		config:      nil,
+		cache:       cache,
 	}
 	Commands["exit"] = cliCommand{
 		name:        "exit",
 		description: "Exit the pokedex",
 		callback:    CliExit,
 		config:      nil,
+		cache:       cache,
 	}
 	Commands["map"] = cliCommand{
 		name:        "map",
 		description: "Shows you the next 20 locations",
 		callback:    CliMap,
 		config:      &Config{},
+		cache:       cache,
 	}
 	Commands["mapb"] = cliCommand{
 		name:        "mapb",
 		description: "Shows you the previous 20 locations",
 		callback:    CliMapb,
 		config:      Commands["map"].config,
+		cache:       cache,
 	}
 }
