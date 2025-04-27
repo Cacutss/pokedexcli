@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
+	//"io"
+	//"log"
 	"os"
 	"strings"
 )
@@ -20,14 +22,13 @@ func cleanInput(text string) []string {
 }
 
 func main() {
-	commands := GetCommands()
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
 		input := cleanInput(scanner.Text())
-		if _, ok := commands[input[0]]; ok {
-			commands[input[0]].callback()
+		if _, ok := Commands[input[0]]; ok {
+			Commands[input[0]].callback()
 		} else {
 			fmt.Println("Uknown command")
 		}
