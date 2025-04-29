@@ -5,6 +5,7 @@ import (
 	pokecache "github.com/Cacutss/pokedexcli/internal/pokecache"
 	pokeapi "github.com/Cacutss/pokedexcli/pokeapi"
 	"io"
+	"math/rand"
 	"os"
 	"time"
 )
@@ -15,11 +16,12 @@ type Config struct {
 }
 
 type cliCommand struct {
-	name        string
-	description string
-	callback    func() error
-	config      *Config
-	cache       *pokecache.Cache
+	Name        string
+	Description string
+	Callback    func() error
+	Config      *Config
+	Cache       *pokecache.Cache
+	Params      []string
 }
 
 type MapStruct struct {
@@ -32,18 +34,42 @@ type MapStruct struct {
 	} `json:"results"`
 }
 
-var cache = pokecache.NewCache(time.Minute * 1)
-var Commands = make(map[string]cliCommand)
+type PokemonInfo struct {
+	Pokemon Pokemon `json:"pokemon"`
+}
+
+type MapZoneInfo struct {
+	Encounters []PokemonInfo `json:"pokemon_encounters"`
+}
+
+var cache = pokecache.NewCache(time.Minute * 5)
+var Commands = make(map[string]*cliCommand)
+
+func CliHelp() error {
+	message := "Welcome to the Pokedex!\nUsage:\nCommands that accept parameters will accept multiple parameters separated by a space And will stop execution upon first invalid parameter.\n\n"
+	for k, v := range Commands {
+		message += k + ": " + v.Description + "\n"
+	}
+	fmt.Println(message)
+	return nil
+}
+
+func CliExit() error {
+	fmt.Println("Closing the Pokedex... Goodbye!")
+	SaveFile()
+	os.Exit(0)
+	return nil
+}
 
 func CliMap() error {
 	var url string
-	if Commands["map"].config.Next == nil {
+	if Commands["map"].Config.Next == nil {
 		url = "https://pokeapi.co/api/v2/location-area"
 	} else {
-		url = *Commands["map"].config.Next
+		url = *Commands["map"].Config.Next
 	}
 	var body []byte
-	body, ok := Commands["mapb"].cache.Get(url)
+	body, ok := Commands["mapb"].Cache.Get(url)
 	if !ok {
 		res, err := pokeapi.GetRes(url)
 		if err != nil {
@@ -64,29 +90,29 @@ func CliMap() error {
 	}
 	if Map.Next != "" {
 		nextURL := Map.Next
-		Commands["map"].config.Next = &nextURL
+		Commands["map"].Config.Next = &nextURL
 	} else {
-		Commands["map"].config.Next = nil
+		Commands["map"].Config.Next = nil
 	}
 	if Map.Previous != nil {
 		prevURL := *Map.Previous
-		Commands["map"].config.Prev = &prevURL
+		Commands["map"].Config.Prev = &prevURL
 	} else {
-		Commands["map"].config.Prev = nil
+		Commands["map"].Config.Prev = nil
 	}
 	return nil
 }
 
 func CliMapb() error {
 	var url string
-	if Commands["mapb"].config.Prev == nil {
+	if Commands["mapb"].Config.Prev == nil {
 		fmt.Println("You're on the first page.")
 		return nil
 	} else {
-		url = *Commands["mapb"].config.Prev
+		url = *Commands["mapb"].Config.Prev
 	}
 	var body []byte
-	body, ok := Commands["mapb"].cache.Get(url)
+	body, ok := Commands["mapb"].Cache.Get(url)
 	if !ok {
 		res, err := pokeapi.GetRes(url)
 		if err != nil {
@@ -107,61 +133,169 @@ func CliMapb() error {
 	}
 	if Map.Next != "" {
 		nextURL := &Map.Next
-		Commands["mapb"].config.Next = nextURL
+		Commands["mapb"].Config.Next = nextURL
 	} else {
-		Commands["mapb"].config.Next = nil
+		Commands["mapb"].Config.Next = nil
 	}
 	if Map.Previous != nil {
 		previousURL := Map.Previous
-		Commands["mapb"].config.Prev = previousURL
+		Commands["mapb"].Config.Prev = previousURL
 	} else {
-		Commands["mapb"].config.Prev = nil
+		Commands["mapb"].Config.Prev = nil
 	}
 	return nil
 }
 
-func CliHelp() error {
-	message := "Welcome to the Pokedex!\nUsage:\n\n"
-	for k, v := range Commands {
-		message += k + ": " + v.description + "\n"
+func CliExplore() error {
+	var url string
+	if len(Commands["explore"].Params) < 1 {
+		fmt.Println("not enough parameters")
+		return nil
 	}
-	fmt.Println(message)
+	for _, v := range Commands["explore"].Params {
+		url = "https://pokeapi.co/api/v2/location-area/" + v
+		body, ok := Commands["explore"].Cache.Get(url)
+		if !ok {
+			res, err := pokeapi.GetRes(url)
+			if err != nil {
+				return fmt.Errorf("error fetching response: %w", err)
+			}
+			defer res.Body.Close()
+			if res.StatusCode == 404 {
+				fmt.Println("Not found")
+				return nil
+			}
+			body, err = io.ReadAll(res.Body)
+			Commands["explore"].Cache.Add(url, body)
+		}
+		fmt.Printf("Exploring %s...\n", v)
+		zoneInfo := MapZoneInfo{}
+		if err := pokeapi.UnmarshalBody(body, &zoneInfo); err != nil {
+			return fmt.Errorf("error unmarshaling body: %w", err)
+		}
+		fmt.Println("Found Pokemon:")
+		for _, v := range zoneInfo.Encounters {
+			fmt.Println(v.Pokemon.Name)
+		}
+	}
 	return nil
 }
 
-func CliExit() error {
-	fmt.Println("Closing the Pokedex... Goodbye!")
-	os.Exit(0)
+func CliCatch() error {
+	if len(Commands["catch"].Params) < 1 {
+		fmt.Println("not enough parameters")
+		return nil
+	}
+	url := "https://pokeapi.co/api/v2/pokemon/" + Commands["catch"].Params[0]
+	cache := Commands["catch"].Cache
+	var body []byte
+	body, ok := cache.Get(url)
+	if !ok {
+		res, err := pokeapi.GetRes(url)
+		if err != nil {
+			return fmt.Errorf("error fetching response: %w", err)
+		}
+		if res.StatusCode == 404 {
+			return fmt.Errorf("error pokemon doesn't exist")
+		}
+		defer res.Body.Close()
+		body, err = io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("error reading body response: %w", err)
+		}
+	}
+	var pokemon Pokemon
+	if err := pokeapi.UnmarshalBody(body, &pokemon); err != nil {
+		return err
+	}
+	fmt.Printf("Throwing a Pokeball at %s...\n", pokemon.Name)
+	for i := 1; i < 4; i++ {
+		random := rand.Intn(600)
+		if random > pokemon.BaseExp {
+			fmt.Printf("%d", i)
+			time.Sleep(time.Millisecond * 250)
+			fmt.Print(".")
+			time.Sleep(time.Millisecond * 250)
+			fmt.Print(".")
+			time.Sleep(time.Millisecond * 250)
+			fmt.Println(".")
+		} else {
+			fmt.Printf("%s", pokemon.Name)
+			time.Sleep(time.Millisecond * 250)
+			fmt.Print(".")
+			time.Sleep(time.Millisecond * 250)
+			fmt.Print(".")
+			time.Sleep(time.Millisecond * 250)
+			fmt.Print(".")
+			fmt.Println("  Broke free!")
+			return nil
+		}
+	}
+	fmt.Printf("%s", pokemon.Name)
+	time.Sleep(time.Millisecond * 500)
+	fmt.Print(".")
+	time.Sleep(time.Millisecond * 500)
+	fmt.Print(".")
+	time.Sleep(time.Millisecond * 500)
+	fmt.Print(".")
+	fmt.Println("  Succesfully catched!")
+	if _, ok := Pokedex[pokemon.Name]; !ok {
+		Pokedex[pokemon.Name] = pokemon
+		fmt.Printf("%s added to the pokedex!\n", pokemon.Name)
+	}
+	if err := SaveFile(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
 	return nil
 }
 
 func init() {
-	Commands["help"] = cliCommand{
-		name:        "help",
-		description: "Displays a message",
-		callback:    CliHelp,
-		config:      nil,
-		cache:       cache,
+	Commands["help"] = &cliCommand{
+		Name:        "help",
+		Description: "Displays a message with all commands",
+		Callback:    CliHelp,
+		Config:      nil,
+		Cache:       nil,
+		Params:      nil,
 	}
-	Commands["exit"] = cliCommand{
-		name:        "exit",
-		description: "Exit the pokedex",
-		callback:    CliExit,
-		config:      nil,
-		cache:       cache,
+	Commands["exit"] = &cliCommand{
+		Name:        "exit",
+		Description: "Exit the pokedex",
+		Callback:    CliExit,
+		Config:      nil,
+		Cache:       nil,
+		Params:      nil,
 	}
-	Commands["map"] = cliCommand{
-		name:        "map",
-		description: "Shows you the next 20 locations",
-		callback:    CliMap,
-		config:      &Config{},
-		cache:       cache,
+	Commands["map"] = &cliCommand{
+		Name:        "map",
+		Description: "Shows you the next 20 locations",
+		Callback:    CliMap,
+		Config:      &Config{},
+		Cache:       cache,
+		Params:      nil,
 	}
-	Commands["mapb"] = cliCommand{
-		name:        "mapb",
-		description: "Shows you the previous 20 locations",
-		callback:    CliMapb,
-		config:      Commands["map"].config,
-		cache:       cache,
+	Commands["mapb"] = &cliCommand{
+		Name:        "mapb",
+		Description: "Shows you the previous 20 locations",
+		Callback:    CliMapb,
+		Config:      Commands["map"].Config,
+		Cache:       cache,
+		Params:      nil,
+	}
+	Commands["explore"] = &cliCommand{
+		Name:        "explore",
+		Description: "Explore <area_name> shows you the pokemon in the area",
+		Callback:    CliExplore,
+		Config:      nil,
+		Cache:       cache,
+		Params:      make([]string, 0),
+	}
+	Commands["catch"] = &cliCommand{
+		Name:        "catch",
+		Description: "Throws a pokeball to catch <pokemon> and tries to catch it, on sucessful attempts adds the pokemon to your pokedex",
+		Callback:    CliCatch,
+		Config:      nil,
+		Cache:       cache,
+		Params:      make([]string, 0),
 	}
 }

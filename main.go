@@ -27,8 +27,15 @@ func main() {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
 		input := cleanInput(scanner.Text())
+		if len(input) == 0 {
+			fmt.Println("Try again")
+			continue
+		}
 		if _, ok := Commands[input[0]]; ok {
-			Commands[input[0]].callback()
+			if Commands[input[0]].Params != nil && len(input) > 1 {
+				Commands[input[0]].Params = input[1:]
+			}
+			Commands[input[0]].Callback()
 		} else {
 			fmt.Println("Uknown command")
 		}

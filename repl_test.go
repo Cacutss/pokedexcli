@@ -34,3 +34,15 @@ func TestCleanInput(t *testing.T) {
 		}
 	}
 }
+
+/*func TestCommandExplore(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected error
+	}{
+		{
+			input:    "https://pokeapi.co/api/v2/location-area/mt-coronet-3f",
+			expected: nil,
+		},
+	}
+}*/
