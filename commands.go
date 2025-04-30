@@ -196,7 +196,8 @@ func CliCatch() error {
 			return fmt.Errorf("error fetching response: %w", err)
 		}
 		if res.StatusCode == 404 {
-			return fmt.Errorf("error pokemon doesn't exist")
+			fmt.Println("Pokemon does not exist.")
+			return nil
 		}
 		defer res.Body.Close()
 		body, err = io.ReadAll(res.Body)
@@ -249,6 +250,41 @@ func CliCatch() error {
 	return nil
 }
 
+func CliInspect() error {
+	params := Commands["inspect"].Params
+	if len(params) == 0 {
+		fmt.Println("You have to specify a pokemon.")
+		return nil
+	}
+	if pokemon, ok := Pokedex[params[0]]; ok {
+		fmt.Printf("Name: %s\n", pokemon.Name)
+		fmt.Printf("Height: %d\n", pokemon.Height)
+		fmt.Printf("Weight: %d\n", pokemon.Weight)
+		fmt.Println("Stats:")
+		for _, Stat := range pokemon.Stats {
+			fmt.Printf(" -%s: %d\n", Stat.Stat.Name, Stat.BaseStat)
+		}
+		fmt.Println("Types:")
+		for _, Type := range pokemon.Types {
+			fmt.Printf(" - %s\n", Type.Type.Name)
+		}
+	} else {
+		fmt.Println("Pokemon not in your pokedex.")
+	}
+	return nil
+}
+
+func CliPokedex() error {
+	if len(Pokedex) == 0 {
+		fmt.Println("Looks like you haven't caught any pokemon yet, good luck!")
+		return nil
+	}
+	for pokemon, _ := range Pokedex {
+		fmt.Printf(" - %s\n", pokemon)
+	}
+	return nil
+}
+
 func init() {
 	Commands["help"] = &cliCommand{
 		Name:        "help",
@@ -292,10 +328,26 @@ func init() {
 	}
 	Commands["catch"] = &cliCommand{
 		Name:        "catch",
-		Description: "Throws a pokeball to catch <pokemon> and tries to catch it, on sucessful attempts adds the pokemon to your pokedex",
+		Description: "Throws a pokeball to catch <pokemon> and tries to catch it, on sucessful attempts adds the pokemon to your pokedex (Does not support multiple parameters)",
 		Callback:    CliCatch,
 		Config:      nil,
 		Cache:       cache,
 		Params:      make([]string, 0),
+	}
+	Commands["inspect"] = &cliCommand{
+		Name:        "inspect",
+		Description: "Inspect <pokemon> gives you information about the pokemon you've already caught",
+		Callback:    CliInspect,
+		Config:      nil,
+		Cache:       cache,
+		Params:      make([]string, 0),
+	}
+	Commands["pokedex"] = &cliCommand{
+		Name:        "pokedex",
+		Description: "Shows all the pokemon you've caught",
+		Callback:    CliPokedex,
+		Config:      nil,
+		Cache:       nil,
+		Params:      nil,
 	}
 }

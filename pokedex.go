@@ -11,10 +11,26 @@ const (
 	filePath = "/pokedex.json"
 )
 
+type PokemonApi struct {
+	Name string `json:"name"`
+	Url  string `json:"url"`
+}
+
 type Pokemon struct {
-	Name    string `json:"name"`
-	Url     string `json:"url"`
-	BaseExp int    `json:"base_experience"`
+	Name   string `json:"name"`
+	Url    string `json:"url"`
+	Height int    `json:"height"`
+	Weight int    `json:"weight"`
+	Stats  []struct {
+		BaseStat int        `json:"base_stat"`
+		Effort   int        `json:"effort"`
+		Stat     PokemonApi `json:"stat"`
+	} `json:"stats"`
+	Types []struct {
+		Slot int        `json:"slot"`
+		Type PokemonApi `json:"type"`
+	} `json:"types"`
+	BaseExp int `json:"base_experience"`
 }
 
 var Pokedex = make(map[string]Pokemon)
